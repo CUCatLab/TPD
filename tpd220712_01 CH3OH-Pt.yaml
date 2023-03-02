@@ -1,0 +1,7 @@
+FileName: 'tpd220712_01.dat'
+Description: 'Methanol on Pt(111)'
+Masses: [40,2,28,18,44,30,32]
+# Assignments: ['Carbon monoxide (CO)','4','5','3','3']
+TChan: 6
+TScale: 10
+

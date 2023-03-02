@@ -1,3 +1,3 @@
-# Thermal Desorption Spectroscopy (TDS)
+# Temperature Programmed Desorption (TPD)
 
-These files are used to Analyze Thermal Desorption Spectroscopy (TDS) data.
+These files are used to analyze Thermal Desorption Spectroscopy (TDS) data.

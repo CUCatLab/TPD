@@ -1,22 +1,18 @@
 import os
-from os import listdir
-from os.path import isfile, join
 import sys
 import numpy as np
 from pandas import DataFrame as df
-import re
 import yaml
-import struct
 import ipywidgets as widgets
 from ipywidgets import Button, Layout
 from IPython.display import clear_output
-from importlib import reload
 import matplotlib.pyplot as plt
 import cmath
 import re
 import yaml
 from lmfit import model, Model
 from lmfit.models import GaussianModel, SkewedGaussianModel, VoigtModel, ConstantModel, LinearModel, QuadraticModel, PolynomialModel
+from . import datatools as dt
 
 # Plotly settings
 import plotly.graph_objects as go
@@ -35,107 +31,8 @@ pio.templates[pio.templates.default].layout.update(dict(
     legend_bgcolor='rgba(0,0,0,0)'
 ))
 
-##### Folders #####
 
-Folders = {}
-Folders['Parameters'] = os.getcwd()+'/Parameters'
-Folders['Fits'] = os.getcwd()+'/Fits'
-Folders['Figures'] = os.getcwd()+'/Figures'
-
-##### Data Tools #####
-
-class DataTools :
-    
-    def __init__(self) :
-        
-        pass
-    
-    def FileList(self,FolderPath,Filter) :
-        
-        os.makedirs(Folders['Parameters'], exist_ok=True)
-        FileList = [f for f in listdir(FolderPath) if isfile(join(FolderPath, f))]
-        for i in range(len(Filter)):
-            FileList = [k for k in FileList if Filter[i] in k]
-        for i in range(len(FileList)):
-            FileList[i] = FileList[i].replace('.yaml','')
-        
-        return FileList
-        
-    def Load_TDS(self,Parameters) :
-        
-        FolderPath = Parameters['FolderPath']
-        FileName = Parameters['FileName']
-        Masses = Parameters['Masses']
-
-        with open(FolderPath + '/' + FileName, mode='rb') as file:
-            fileContent = file.read()
-
-        NumChan = len(Masses) + 1
-        DataLength = int((len(fileContent)-5)/(46*NumChan))
-        Data = np.zeros((int(1+NumChan),DataLength))
-
-        for i in range(len(Data)) :
-            for j in range(len(Data[0])) :
-                if i == 0 :
-                    index = int(31+j*46*NumChan)
-                    Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]/1000
-                else :
-                    index = int(43+j*46*NumChan + (i-1)*46)
-                    Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]
-        
-        Header = list()
-        Header.append('Time (s)')
-        if 'TChan' in Parameters :
-            TChan = Parameters['TChan']
-        else :
-            TChan = 0
-        for idx in range(NumChan) :
-            if idx == TChan :
-                Header.append('Temperature (K)')
-            else :
-                Header.append('Mass '+str(Masses[idx-1]))
-        
-        Data = df(np.transpose(Data),columns=Header)
-        Data = Data.set_index('Temperature (K)')
-        if 'TScale' in Parameters :
-            Data.index = Data.index * Parameters['TScale']
-        
-        Parameters['HeatingRate'] = np.mean(np.diff(Data.index)/np.diff(Data['Time (s)']))
-            
-        return Data, Parameters
-    
-    def RemoveEmptyDataSets(self,Data,Threshold) :
-        
-        Index = list()
-        for i in Data.columns :
-            if np.mean(Data[i]) < Threshold :
-                Index.append(i)
-        for i in Index :
-            del Data[i]
-        
-        return Data
-    
-    def TrimData(self,Data,Min,Max) :
-        
-        Mask = np.all([Data.index.values>Min,Data.index.values<Max],axis=0)
-        Data = Data[Mask]
-        
-        return Data
-    
-    def ReduceResolution(self,Data,Resolution=1) :
-        
-        Counter = 0
-        ReducedData = df()
-        for i in range(int(len(Data.columns.values)/Resolution)) :
-            Column = round(np.mean(Data.columns[Counter:Counter+Resolution]),1)
-            ReducedData[Column] = Data[Data.columns[Counter:Counter+Resolution]].mean(axis=1)
-            Counter = Counter + Resolution
-        
-        return ReducedData
-
-##### Fit Tools #####
-
-class FitTools :
+class fitTools :
     
     def __init__(self,Data,FitInfo,Name='') :
         
@@ -341,8 +238,6 @@ class FitTools :
             if kwarg == 'fit_x':
                 fit_x = kwargs[kwarg]
         
-        dt = DataTools()
-        
         Data = self.Data
         Name = self.Name
         FitModel = self.FitModel
@@ -350,7 +245,7 @@ class FitTools :
         FitInfo = self.FitInfo
         
         if 'xRange' in FitInfo :
-            Data = dt.TrimData(Data,FitInfo['xRange'][0],FitInfo['xRange'][1])
+            Data = dt.trimData(Data,FitInfo['xRange'][0],FitInfo['xRange'][1])
         x = Data.index.values
         try:
             fit_x
@@ -432,32 +327,33 @@ class FitTools :
             print(string)
             print(75*'_')
 
-##### TDS #####
 
-class TDS :
+class tpd :
     
-    def __init__(self,DataFolder='') :
+    def __init__(self) :
         
-        self.dt = DataTools()
-        self.Folders = Folders
-        self.Folders['Data'] = DataFolder
+        with open('parameters.yaml', 'r') as stream :
+            self.folders = yaml.safe_load(stream)['folders']
     
-    def LoadData(self, Folder, File) :
+    def LoadData(self, File) :
         
-        dt = self.dt
-        
-        with open(Folder+'/'+File, 'r') as stream:
+        with open(File, 'r') as stream :
             Parameters = yaml.safe_load(stream)
         
-        Parameters['FolderPath'] = self.Folders['Data']+'/'+Parameters['FolderPath']
-        Data, Parameters = dt.Load_TDS(Parameters)
+        if 'FolderPath' not in Parameters :
+            print(File)
+            date = re.split(r'tpd|_',File)[1]
+            print('20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6])
+            Parameters['FolderPath'] = self.folders['data']+'/'+'20'+date[0:2]+'/'+'20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6]
+
+        Data, Parameters = dt.loadTPD(Parameters)
         if 'Assignments' in Parameters :
             Assignments = df(Parameters['Assignments'],index=Parameters['Masses'],columns=['Assignments'])
         else :
             Assignments = df(index=Parameters['Masses'],columns=['Assignments'])
         
         self.Assignments = Assignments
-        self.ParametersFile = [Folder,File]
+        self.ParametersFile = File
         self.Parameters = Parameters
         self.Data = Data
     
@@ -517,13 +413,12 @@ class TDS :
     
     def UI(self) :
         
-        dt = self.dt
         out = widgets.Output()
 
         ##### Widgets #####
 
         self.ParametersFiles = widgets.Dropdown(
-            options=dt.FileList(Folders['Parameters'],['.yaml','TPD']),
+            options=dt.fileList(['.yaml','tpd']),
             description='Select File',
             layout=Layout(width='70%'),
             style = {'description_width': '150px'},
@@ -531,8 +426,8 @@ class TDS :
         )
         
         def Save2File_Clicked(b) :
-            os.makedirs(Folders['Fits'], exist_ok=True)
-            FitsFile = Folders['Fits'] + '/' + self.ParametersFiles.value + '.hdf'
+            os.makedirs(self.folders['fits'], exist_ok=True)
+            FitsFile = self.folders['fits'] + '/' + self.ParametersFiles.value + '.hdf'
             print(FitsFile)
             self.Data.to_hdf(FitsFile,'Data',mode='w')
             self.Assignments.to_hdf(FitsFile,'Assignments',mode='a')
@@ -543,7 +438,7 @@ class TDS :
             with out :
                 clear_output(True)
 
-                self.LoadData(Folders['Parameters'],self.ParametersFiles.value+'.yaml')
+                self.LoadData(self.ParametersFiles.value+'.yaml')
                 Data = self.Data
                 self.SimulateData(self.HeatingRate.value)
                 SimulatedData = self.SimulatedData
@@ -568,7 +463,7 @@ class TDS :
         def ShowData_Clicked(b) :
             with out :
                 clear_output(True)
-                self.LoadData(Folders['Parameters'],self.ParametersFiles.value+'.yaml')
+                self.LoadData(self.ParametersFiles.value+'.yaml')
                 Data = self.Data
                 Masses = self.Parameters['Masses']
                 fig = go.Figure()
