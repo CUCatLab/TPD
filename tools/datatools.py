@@ -2,7 +2,7 @@ from os import listdir
 import numpy as np
 from pandas import DataFrame as df
 import struct
-
+import yaml
 
 def fileList(Filter) :
     
@@ -14,46 +14,61 @@ def fileList(Filter) :
     
     return FileList
     
-def loadTPD(Parameters) :
+def loadData(Parameters) :
     
     FolderPath = Parameters['FolderPath']
     FileName = Parameters['FileName']
-    Masses = Parameters['Masses']
 
-    with open(FolderPath + '/' + FileName, mode='rb') as file:
-        fileContent = file.read()
+    if 'yaml' in Parameters['FileName'] or 'yml' in Parameters['FileName'] :
 
-    NumChan = len(Masses) + 1
-    DataLength = int((len(fileContent)-5)/(46*NumChan))
-    Data = np.zeros((int(1+NumChan),DataLength))
+        with open(FolderPath + '/' + FileName, mode='rb') as file:
+            fileContent = file.read()
+        Data = yaml.safe_load(fileContent)
+        del Data['Parameters']
+        del Data['Pressure']
 
-    for i in range(len(Data)) :
-        for j in range(len(Data[0])) :
-            if i == 0 :
-                index = int(31+j*46*NumChan)
-                Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]/1000
-            else :
-                index = int(43+j*46*NumChan + (i-1)*46)
-                Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]
-    
-    Header = list()
-    Header.append('Time (s)')
-    if 'TChan' in Parameters :
-        TChan = Parameters['TChan']
+        Data = df.from_dict(Data)
+        Data = Data.set_index('Temperature')
+        
+        Parameters['HeatingRate'] = np.mean(np.diff(Data.index)/np.diff(Data['Time']))
+
     else :
-        TChan = 0
-    for idx in range(NumChan) :
-        if idx == TChan :
-            Header.append('Temperature (K)')
+        Masses = Parameters['Masses']
+
+        with open(FolderPath + '/' + FileName, mode='rb') as file:
+            fileContent = file.read()
+
+        NumChan = len(Masses) + 1
+        DataLength = int((len(fileContent)-5)/(46*NumChan))
+        Data = np.zeros((int(1+NumChan),DataLength))
+
+        for i in range(len(Data)) :
+            for j in range(len(Data[0])) :
+                if i == 0 :
+                    index = int(31+j*46*NumChan)
+                    Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]/1000
+                else :
+                    index = int(43+j*46*NumChan + (i-1)*46)
+                    Data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]
+        
+        Header = list()
+        Header.append('Time')
+        if 'TChan' in Parameters :
+            TChan = Parameters['TChan']
         else :
-            Header.append('Mass '+str(Masses[idx-1]))
-    
-    Data = df(np.transpose(Data),columns=Header)
-    Data = Data.set_index('Temperature (K)')
-    if 'TScale' in Parameters :
-        Data.index = Data.index * Parameters['TScale']
-    
-    Parameters['HeatingRate'] = np.mean(np.diff(Data.index)/np.diff(Data['Time (s)']))
+            TChan = 0
+        for idx in range(NumChan) :
+            if idx == TChan :
+                Header.append('Temperature')
+            else :
+                Header.append(str(Masses[idx-1]))
+        
+        Data = df(np.transpose(Data),columns=Header)
+        Data = Data.set_index('Temperature')
+        if 'TScale' in Parameters :
+            Data.index = Data.index * Parameters['TScale']
+        
+        Parameters['HeatingRate'] = np.mean(np.diff(Data.index)/np.diff(Data['Time']))
         
     return Data, Parameters
 

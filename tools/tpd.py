@@ -13,6 +13,7 @@ import yaml
 from lmfit import model, Model
 from lmfit.models import GaussianModel, SkewedGaussianModel, VoigtModel, ConstantModel, LinearModel, QuadraticModel, PolynomialModel
 from . import datatools as dt
+from ipyfilechooser import FileChooser
 
 # Plotly settings
 import plotly.graph_objects as go
@@ -327,7 +328,6 @@ class fitTools :
             print(string)
             print(75*'_')
 
-
 class tpd :
     
     def __init__(self) :
@@ -336,21 +336,33 @@ class tpd :
             self.folders = yaml.safe_load(stream)['folders']
     
     def LoadData(self, File) :
-        
+
         with open(File, 'r') as stream :
             Parameters = yaml.safe_load(stream)
         
         if 'FolderPath' not in Parameters :
-            print(File)
-            date = re.split(r'tpd|_',File)[1]
-            print('20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6])
-            Parameters['FolderPath'] = self.folders['data']+'/'+'20'+date[0:2]+'/'+'20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6]
+            date = File.split('_')[0]
+            date = re.sub(r'[^0-9]','',date)
+            if len(date) == 6 :
+                Parameters['FolderPath'] = self.folders['data']+'/'+'20'+date[0:2]+'/'+'20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6]
+            elif len(date) == 8 :
+                Parameters['FolderPath'] = self.folders['data']+'/'+date[0:4]+'/'+date[0:4]+'.'+date[4:6]+'.'+date[6:8]
+        
+        if 'FileName' not in Parameters :
+            Parameters['FileName'] = File
 
-        Data, Parameters = dt.loadTPD(Parameters)
+        print('Folder: '+Parameters['FolderPath']+'/')
+        print('File:   '+Parameters['FileName'])
+
+        Data, Parameters = dt.loadData(Parameters)
+        
+        index = []
+        for i in Data.keys():
+            index.append(i)
         if 'Assignments' in Parameters :
-            Assignments = df(Parameters['Assignments'],index=Parameters['Masses'],columns=['Assignments'])
+            Assignments = df(Parameters['Assignments'],index=index,columns=['Assignments'])
         else :
-            Assignments = df(index=Parameters['Masses'],columns=['Assignments'])
+            Assignments = df(index=index,columns=['Assignments'])
         
         self.Assignments = Assignments
         self.ParametersFile = File
@@ -418,59 +430,23 @@ class tpd :
         ##### Widgets #####
 
         self.ParametersFiles = widgets.Dropdown(
-            options=dt.fileList(['.yaml','tpd']),
+            options=dt.fileList(['.yaml']),
             description='Select File',
             layout=Layout(width='70%'),
             style = {'description_width': '150px'},
             disabled=False,
         )
         
-        def Save2File_Clicked(b) :
-            os.makedirs(self.folders['fits'], exist_ok=True)
-            FitsFile = self.folders['fits'] + '/' + self.ParametersFiles.value + '.hdf'
-            print(FitsFile)
-            self.Data.to_hdf(FitsFile,'Data',mode='w')
-            self.Assignments.to_hdf(FitsFile,'Assignments',mode='a')
-        Save2File = widgets.Button(description="Save to File")
-        Save2File.on_click(Save2File_Clicked)
-
-        def SimulateTrace_Clicked(b) :
-            with out :
-                clear_output(True)
-
-                self.LoadData(self.ParametersFiles.value+'.yaml')
-                Data = self.Data
-                self.SimulateData(self.HeatingRate.value)
-                SimulatedData = self.SimulatedData
-
-                fig = go.Figure()
-                for Trace in Data :
-                    if Trace != 'Time (s)' :
-                        fig.add_trace(go.Scatter(x=Data.index,y=Data[Trace],name=Trace,mode='lines'))
-                for Trace in SimulatedData :
-                    fig.add_trace(go.Scatter(x=SimulatedData.index,y=SimulatedData[Trace],name=Trace,mode='lines'))
-                fig.update_layout(xaxis_title='Temperature (K)',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
-                fig.show()
-
-                fig = px.line(self.SimulatedCoverages)
-                fig.update_layout(yaxis_title='Coverage',showlegend=False,height=100)
-                fig.show()
-                display(widgets.Box([SimulateTrace,self.HeatingRate]))
-                display(Save2File)
-        SimulateTrace = widgets.Button(description="Simulate Traces")
-        SimulateTrace.on_click(SimulateTrace_Clicked)
-        
         def ShowData_Clicked(b) :
             with out :
                 clear_output(True)
                 self.LoadData(self.ParametersFiles.value+'.yaml')
                 Data = self.Data
-                Masses = self.Parameters['Masses']
                 fig = go.Figure()
                 for Trace in Data :
-                    if Trace != 'Time (s)' :
+                    if Trace != 'Time' :
                         fig.add_trace(go.Scatter(x=Data.index,y=Data[Trace],name=Trace,mode='lines'))
-                fig.update_layout(xaxis_title='Temperature (K)',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
+                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
                 fig.show()
                 self.HeatingRate = widgets.FloatText(
                     value=np.around(self.Parameters['HeatingRate'],3),
@@ -483,10 +459,86 @@ class tpd :
                 display(widgets.HBox([Save2File]))
         ShowData = widgets.Button(description="Show Data")
         ShowData.on_click(ShowData_Clicked)
+
+        def SimulateTrace_Clicked(b) :
+            with out :
+                clear_output(True)
+
+                self.LoadData(self.ParametersFiles.value+'.yaml')
+                Data = self.Data
+                self.SimulateData(self.HeatingRate.value)
+                SimulatedData = self.SimulatedData
+
+                fig = go.Figure()
+                for Trace in Data :
+                    if Trace != 'Time' :
+                        fig.add_trace(go.Scatter(x=Data.index,y=Data[Trace],name=Trace,mode='lines'))
+                for Trace in SimulatedData :
+                    fig.add_trace(go.Scatter(x=SimulatedData.index,y=SimulatedData[Trace],name=Trace,mode='lines'))
+                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
+                fig.show()
+
+                fig = px.line(self.SimulatedCoverages)
+                fig.update_layout(yaxis_title='Coverage',showlegend=False,height=100)
+                fig.show()
+                display(widgets.Box([SimulateTrace,self.HeatingRate]))
+                display(Save2File)
+        SimulateTrace = widgets.Button(description="Simulate Traces")
+        SimulateTrace.on_click(SimulateTrace_Clicked)
+        
+        def Save2File_Clicked(b) :
+            os.makedirs(self.folders['fits'], exist_ok=True)
+            FitsFile = self.folders['fits'] + '/' + self.ParametersFiles.value + '.hdf'
+            print(FitsFile)
+            self.Data.to_hdf(FitsFile,'Data',mode='w')
+            self.Assignments.to_hdf(FitsFile,'Assignments',mode='a')
+        Save2File = widgets.Button(description="Save to File")
+        Save2File.on_click(Save2File_Clicked)
         
         display(self.ParametersFiles)
         display(ShowData)
 
         self.ParametersFile = self.ParametersFiles.value
+
+        display(out)
+    
+
+class tpdViewer :
+    
+    def __init__(self) :
+        
+        pass
+    
+    def LoadData(self, file, folder) :
+
+        Parameters = {}
+        Parameters['FileName'] = file
+        Parameters['FolderPath'] = folder
+        Data, Parameters = dt.loadData(Parameters)
+
+        self.Parameters = Parameters
+        self.Data = Data
+    
+    def UI(self) :
+        
+        out = widgets.Output()
+
+        fc = FileChooser()
+        
+        def ShowData_Clicked(b) :
+            with out :
+                clear_output(True)
+                self.LoadData(fc.selected_filename,fc.selected_path)
+                fig = go.Figure()
+                for Trace in self.Data :
+                    if Trace != 'Time' :
+                        fig.add_trace(go.Scatter(x=self.Data.index,y=self.Data[Trace],name=Trace,mode='lines'))
+                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['FileName'],legend_title='',height=800,font=dict(size=18))
+                fig.show()
+        ShowData = widgets.Button(description="View TPD")
+        ShowData.on_click(ShowData_Clicked)
+        
+        display(fc)
+        display(ShowData)
 
         display(out)
