@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+import pandas as pd
 from pandas import DataFrame as df
 import yaml
 import ipywidgets as widgets
@@ -13,6 +14,7 @@ import yaml
 from lmfit import model, Model
 from lmfit.models import GaussianModel, SkewedGaussianModel, VoigtModel, ConstantModel, LinearModel, QuadraticModel, PolynomialModel
 from . import datatools as dt
+import ipywidgets as ipw
 from ipyfilechooser import FileChooser
 
 # Plotly settings
@@ -535,8 +537,17 @@ class tpdViewer :
                         fig.add_trace(go.Scatter(x=self.Data.index,y=self.Data[Trace],name=Trace,mode='lines'))
                 fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['FileName'],legend_title='',height=800,font=dict(size=18))
                 fig.show()
+                display(saveData)
         ShowData = widgets.Button(description="View TPD")
         ShowData.on_click(ShowData_Clicked)
+
+        def saveData_Clicked(b) :
+            with out :
+                filename = os.path.splitext(fc.selected_filename)[0]
+                with pd.ExcelWriter(filename+'.xlsx') as writer :
+                    self.Data.to_excel(writer, sheet_name=filename)
+        saveData = ipw.Button(description="Save to Excel")
+        saveData.on_click(saveData_Clicked)
         
         display(fc)
         display(ShowData)
