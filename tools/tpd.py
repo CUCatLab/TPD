@@ -1,21 +1,19 @@
 import os
+from os import listdir
 import sys
+import struct
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from pandas import DataFrame as df
 import yaml
-import ipywidgets as widgets
+import ipywidgets as ipw
 from ipywidgets import Button, Layout
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import cmath
 import re
 import yaml
-from lmfit import model, Model
-from lmfit.models import GaussianModel, SkewedGaussianModel, VoigtModel, ConstantModel, LinearModel, QuadraticModel, PolynomialModel
-from . import datatools as dt
-import ipywidgets as ipw
-from ipyfilechooser import FileChooser
 
 # Plotly settings
 import plotly.graph_objects as go
@@ -28,361 +26,188 @@ pio.templates[pio.templates.default].layout.update(dict(
     title_x = 0.5,
     title_xanchor = 'center',
     title_yanchor = 'top',
-    legend_x = 0,
+    legend_x = 1,
     legend_y = 1,
     legend_traceorder = "normal",
     legend_bgcolor='rgba(0,0,0,0)'
 ))
 
+parametersFile = 'tools/parameters.yaml'
 
-class fitTools :
-    
-    def __init__(self,Data,FitInfo,Name='') :
-        
-        self.Data = Data
-        self.FitInfo = FitInfo
-        self.Name = Name
-        
-        try :
-            FitInfo['ModelType']
-            FitInfo['Models']
-        except:
-            ModelType = 'None'
-            ModelString = ''
-        else :
-            if FitInfo['ModelType'] == 'BuiltIn' :
-                self.BuiltInModels()
-            if FitInfo['ModelType'] == 'SFG' :
-                self.SFGModel()
-    
-    def BuiltInModels(self) :
-        
-        FitInfo = self.FitInfo
-        
-        ModelString = list()
-        for key in FitInfo['Models'] :
-            ModelString.append((key,FitInfo['Models'][key]['model']))
-        
-        for Model in ModelString :
-            try :
-                FitModel
-            except :
-                if Model[1] == 'Constant' :
-                    FitModel = ConstantModel(prefix=Model[0]+'_')
-                if Model[1] == 'Linear' :
-                    FitModel = LinearModel(prefix=Model[0]+'_')
-                if Model[1] == 'Gaussian' :
-                    FitModel = GaussianModel(prefix=Model[0]+'_')
-                if Model[1] == 'SkewedGaussian' :
-                    FitModel = SkewedGaussianModel(prefix=Model[0]+'_')
-                if Model[1] == 'Voigt' :
-                    FitModel = VoigtModel(prefix=Model[0]+'_')
-            else :
-                if Model[1] == 'Constant' :
-                    FitModel = FitModel + ConstantModel(prefix=Model[0]+'_')
-                if Model[1] == 'Linear' :
-                    FitModel = FitModel + LinearModel(prefix=Model[0]+'_')
-                if Model[1] == 'Gaussian' :
-                    FitModel = FitModel + GaussianModel(prefix=Model[0]+'_')
-                if Model[1] == 'SkewedGaussian' :
-                    FitModel = FitModel + SkewedGaussianModel(prefix=Model[0]+'_')
-                if Model[1] == 'Voigt' :
-                    FitModel = FitModel + VoigtModel(prefix=Model[0]+'_')
-        
-        self.FitModel = FitModel
-        self.ModelParameters = FitModel.make_params()
-        
-    def SFGModel(self) :
-        
-        FitInfo = self.FitInfo
-        
-        ModelString = list()
-        for key in FitInfo['Models'] :
-            ModelString.append([key])
-        
-        if len(ModelString) == 2 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 3 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 4 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 5 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma,
-                            Peak4_amp,Peak4_phi,Peak4_omega,Peak4_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                Peaks+= Peak4_amp*(cmath.exp(Peak4_phi*1j)/(x-Peak4_omega+Peak4_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 6 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma,
-                            Peak4_amp,Peak4_phi,Peak4_omega,Peak4_gamma,
-                            Peak5_amp,Peak5_phi,Peak5_omega,Peak5_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                Peaks+= Peak4_amp*(cmath.exp(Peak4_phi*1j)/(x-Peak4_omega+Peak4_gamma*1j))
-                Peaks+= Peak5_amp*(cmath.exp(Peak5_phi*1j)/(x-Peak5_omega+Peak5_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 7 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma,
-                            Peak4_amp,Peak4_phi,Peak4_omega,Peak4_gamma,
-                            Peak5_amp,Peak5_phi,Peak5_omega,Peak5_gamma,
-                            Peak6_amp,Peak6_phi,Peak6_omega,Peak6_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                Peaks+= Peak4_amp*(cmath.exp(Peak4_phi*1j)/(x-Peak4_omega+Peak4_gamma*1j))
-                Peaks+= Peak5_amp*(cmath.exp(Peak5_phi*1j)/(x-Peak5_omega+Peak5_gamma*1j))
-                Peaks+= Peak6_amp*(cmath.exp(Peak6_phi*1j)/(x-Peak6_omega+Peak6_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 8 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma,
-                            Peak4_amp,Peak4_phi,Peak4_omega,Peak4_gamma,
-                            Peak5_amp,Peak5_phi,Peak5_omega,Peak5_gamma,
-                            Peak6_amp,Peak6_phi,Peak6_omega,Peak6_gamma,
-                            Peak7_amp,Peak7_phi,Peak7_omega,Peak7_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                Peaks+= Peak4_amp*(cmath.exp(Peak4_phi*1j)/(x-Peak4_omega+Peak4_gamma*1j))
-                Peaks+= Peak5_amp*(cmath.exp(Peak5_phi*1j)/(x-Peak5_omega+Peak5_gamma*1j))
-                Peaks+= Peak6_amp*(cmath.exp(Peak6_phi*1j)/(x-Peak6_omega+Peak6_gamma*1j))
-                Peaks+= Peak7_amp*(cmath.exp(Peak7_phi*1j)/(x-Peak7_omega+Peak7_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        elif len(ModelString) == 9 :
-            def SFGFunction(x,NonRes_amp,
-                            Peak1_amp,Peak1_phi,Peak1_omega,Peak1_gamma,
-                            Peak2_amp,Peak2_phi,Peak2_omega,Peak2_gamma,
-                            Peak3_amp,Peak3_phi,Peak3_omega,Peak3_gamma,
-                            Peak4_amp,Peak4_phi,Peak4_omega,Peak4_gamma,
-                            Peak5_amp,Peak5_phi,Peak5_omega,Peak5_gamma,
-                            Peak6_amp,Peak6_phi,Peak6_omega,Peak6_gamma,
-                            Peak7_amp,Peak7_phi,Peak7_omega,Peak7_gamma,
-                            Peak8_amp,Peak8_phi,Peak8_omega,Peak8_gamma) :
-                Peaks = NonRes_amp
-                Peaks+= Peak1_amp*(cmath.exp(Peak1_phi*1j)/(x-Peak1_omega+Peak1_gamma*1j))
-                Peaks+= Peak2_amp*(cmath.exp(Peak2_phi*1j)/(x-Peak2_omega+Peak2_gamma*1j))
-                Peaks+= Peak3_amp*(cmath.exp(Peak3_phi*1j)/(x-Peak3_omega+Peak3_gamma*1j))
-                Peaks+= Peak4_amp*(cmath.exp(Peak4_phi*1j)/(x-Peak4_omega+Peak4_gamma*1j))
-                Peaks+= Peak5_amp*(cmath.exp(Peak5_phi*1j)/(x-Peak5_omega+Peak5_gamma*1j))
-                Peaks+= Peak6_amp*(cmath.exp(Peak6_phi*1j)/(x-Peak6_omega+Peak6_gamma*1j))
-                Peaks+= Peak8_amp*(cmath.exp(Peak8_phi*1j)/(x-Peak8_omega+Peak8_gamma*1j))
-                return np.real(Peaks*np.conjugate(Peaks))
-        
-        FitModel = Model(SFGFunction)
-        ModelParameters = FitModel.make_params()
-        
-        self.FitModel = FitModel
-        self.ModelParameters = ModelParameters
-    
-    def SetParameters(self, Value = None) :
-        
-        FitInfo = self.FitInfo
-        ModelParameters = self.ModelParameters
-        
-        ParameterList = ['amp','phi','omega','gamma','center','sigma','c']
-        Parameters = {'Standard': FitInfo['Models']}
-
-        if 'Cases' in FitInfo and Value != None:
-            for Case in FitInfo['Cases'] :
-                if Value >= min(FitInfo['Cases'][Case]['zRange']) and Value <= max(FitInfo['Cases'][Case]['zRange']) :
-                    Parameters[Case] = FitInfo['Cases'][Case]
-        
-        for Dictionary in Parameters :
-            for Peak in Parameters[Dictionary] :
-                for Parameter in Parameters[Dictionary][Peak] :
-                    if Parameter in ParameterList :
-                        for Key in Parameters[Dictionary][Peak][Parameter] :
-                            if Key != 'set' :
-                                exec('ModelParameters["'+Peak+'_'+Parameter+'"].'+Key+'='+str(Parameters[Dictionary][Peak][Parameter][Key]))
-                            else :
-                                exec('ModelParameters["'+Peak+'_'+Parameter+'"].'+Key+str(Parameters[Dictionary][Peak][Parameter][Key]))
-        
-        self.ModelParameters = ModelParameters
-    
-    def Fit(self,**kwargs) :
-        
-        for kwarg in kwargs :
-            if kwarg == 'fit_x':
-                fit_x = kwargs[kwarg]
-        
-        Data = self.Data
-        Name = self.Name
-        FitModel = self.FitModel
-        ModelParameters = self.ModelParameters
-        FitInfo = self.FitInfo
-        
-        if 'xRange' in FitInfo :
-            Data = dt.trimData(Data,FitInfo['xRange'][0],FitInfo['xRange'][1])
-        x = Data.index.values
-        try:
-            fit_x
-        except :
-            try :
-                NumberPoints
-            except :
-                fit_x = x
-            else :
-                for i in NumberPoints :
-                    fit_x[i] = min(x) + i * (max(x) - min(x)) / (Numberpoints - 1)
-        
-        Fits = df(index=fit_x,columns=Data.columns.values)
-        FitsParameters = df(index=ModelParameters.keys(),columns=Data.columns.values)
-        FitsResults = list()
-        FitsComponents = list()
-        
-        for idx,Column in enumerate(Data) :
-            
-            self.SetParameters(Column)
-            
-            y = Data[Column].values
-            FitResults = FitModel.fit(y, ModelParameters, x=x, nan_policy='omit')
-            fit_comps = FitResults.eval_components(FitResults.params, x=fit_x)
-            fit_y = FitResults.eval(x=fit_x)
-            ParameterNames = [i for i in FitResults.params.keys()]
-            for Parameter in (ParameterNames) :
-                FitsParameters[Column][Parameter] = FitResults.params[Parameter].value
-            Fits[Column] = fit_y
-            FitsResults.append(FitResults)
-            FitsComponents.append(fit_comps)
-            
-            sys.stdout.write(("\rFitting %i out of "+str(Data.shape[1])) % (idx+1))
-            sys.stdout.flush()
-        
-        self.Fits = Fits
-        self.FitsParameters = FitsParameters
-        self.FitsResults = FitsResults
-        self.FitsComponents = FitsComponents
-    
-    def ShowFits(self,xLabel='',yLabel='') :
-        
-        Data = self.Data
-        Fits = self.Fits
-        FitInfo = self.FitInfo
-        
-        FitsParameters = self.FitsParameters
-        FitsComponents = self.FitsComponents
-        
-        for idx,Column in enumerate(Data) :
-            
-            plt.figure(figsize = [6,4])
-            plt.plot(Data.index, Data[Column],'k.', label='Data')
-            plt.plot(Fits.index, Fits[Column], 'r-', label='Fit')
-            for Component in FitsComponents[idx] :
-                if not isinstance(FitsComponents[idx][Component],float) :
-                    plt.fill(Fits.index, FitsComponents[idx][Component], '--', label=Component, alpha=0.5)
-            plt.legend(frameon=False, loc='upper center', bbox_to_anchor=(1.2, 1), ncol=1)
-            plt.xlabel(xLabel), plt.ylabel(yLabel)
-            if 'xRange' in FitInfo :
-                plt.xlim(FitInfo['xRange'][0],FitInfo['xRange'][1])
-            plt.title(str(Column))
-            plt.show()
-            
-            Peaks = list()
-            for Parameter in FitsParameters.index :
-                Name = Parameter.split('_')[0]
-                if Name not in Peaks :
-                    Peaks.append(Name)
-
-            string = ''
-            for Peak in Peaks :
-                string = string + Peak + ' | '
-                for Parameter in FitsParameters.index :
-                    if Peak == Parameter.split('_')[0] : 
-                        string = string + Parameter.split('_')[1] + ': ' + str(round(FitsParameters[Column][Parameter],2))
-                        string = string + ', '
-                string = string[:-2] + '\n'
-            print(string)
-            print(75*'_')
-
-class tpd :
+class dataTools :
     
     def __init__(self) :
-        
-        with open('parameters.yaml', 'r') as stream :
-            self.folders = yaml.safe_load(stream)['folders']
-    
-    def LoadData(self, File) :
 
-        with open(File, 'r') as stream :
-            Parameters = yaml.safe_load(stream)
+        pass
+
+    def loadData(self, file, folder) :
+
+        def loadTPD_SU(parameters) :
+            
+            FolderPath = parameters['FolderPath']
+            fileName = parameters['FileName']
+            Masses = parameters['Masses']
+
+            with open(FolderPath + '/' + fileName, mode='rb') as file:
+                fileContent = file.read()
+
+            NumChan = len(Masses) + 1
+            dataLength = int((len(fileContent)-5)/(46*NumChan))
+            data = np.zeros((int(1+NumChan),dataLength))
+
+            for i in range(len (data)) :
+                for j in range(len (data[0])) :
+                    if i == 0 :
+                        index = int(31+j*46*NumChan)
+                        data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]/1000
+                    else :
+                        index = int(43+j*46*NumChan + (i-1)*46)
+                        data[i,j] = struct.unpack('<d', fileContent[index:index+8])[0]
+            
+            Header = list()
+            Header.append('Time (s)')
+            if 'TChan' in parameters :
+                TChan = parameters['TChan']
+            else :
+                TChan = 0
+            for idx in range(NumChan) :
+                if idx == TChan :
+                    Header.append('Temperature (K)')
+                else :
+                    Header.append(str(Masses[idx-1]))
+            
+            data = df(np.transpose (data),columns=Header)
+            if 'Temperature (K)' in data:
+                data = data.set_index('Temperature (K)')
+            else:
+                data = data.set_index('Temperature')
+            if 'TScale' in parameters :
+                data.index = data.index * parameters['TScale']
+            
+            parameters['HeatingRate'] = np.mean(np.diff (data.index)/np.diff (data['Time (s)']))
+                
+            return data, parameters
+
+        def loadTPD(parameters) :
+            
+            FolderPath = parameters['FolderPath']
+            fileName = parameters['FileName']
+            
+            if 'yml' in fileName:
+                with open(FolderPath + '/' + fileName, mode='rb') as file:
+                    fileContent = file.read()
+                allData = yaml.safe_load(fileContent)
+                
+                data = dict()
+                
+                for key in allData:
+                    try:
+                        data[float(key)] = allData[key]
+                    except ValueError:
+                        data[key] = allData[key]
+                        
+            else:
+                with open(FolderPath + '/' + fileName, mode='rb') as file:
+                    fileContent = pd.read_csv(file)
+
+                data = fileContent
+            
+            if 'Parameters' in data:
+                del data['Parameters']
+            if 'Pressure (Torr)' in data:
+                del data['Pressure (Torr)']
+            if 'Pressure' in data:
+                del data['Pressure']
+            if 'Mass 15.0' in data:
+                data['CH3'] = data['Mass 15.0']
+                del data['Mass 15.0']
+            if 'Mass 17.0' in data:
+                data['OH'] = data['Mass 17.0']
+                del data['Mass 17.0']
+            if 'Mass 18.0' in data:
+                data['H2O'] = data['Mass 18.0']
+                del data['Mass 18.0']
+            if 'Mass 2.0' in data:
+                data['H2'] = data['Mass 2.0']
+                del data['Mass 2.0']
+            if 'Mass 28.0' in data:
+                data['CO'] = data['Mass 28.0']
+                del data['Mass 28.0']
+            if 'Mass 32.0' in data:
+                data['O2'] = data['Mass 32.0']
+                del data['Mass 32.0']
+            if 'Mass 44.0' in data:
+                data['CO2'] = data['Mass 44.0']
+                del data['Mass 44.0']
+            
+            if type (data) == dict:
+                data = df.from_dict (data)
+            if 'Temperature (K)' in data:
+                data = data.set_index('Temperature (K)')
+            else:
+                data = data.set_index('Temperature')
+            
+            if 'Time (s)' in data:
+                parameters['HeatingRate'] = np.mean(np.diff (data.index)/np.diff (data['Time (s)']))
+            else:
+                parameters['HeatingRate'] = np.mean(np.diff (data.index)/np.diff (data['Time']))
+                
+            return data, parameters
+
+        with open(file, 'r') as stream :
+            parameters = yaml.safe_load(stream)
         
-        if 'FolderPath' not in Parameters :
-            date = File.split('_')[0]
-            date = re.sub(r'[^0-9]','',date)
+        if 'FolderPath' not in parameters :
+            print(file)
+            if 'TPD' in file or 'tpd' in file:
+                date = re.split(r'TPD|_',file)[1]
+            if 'tpd' in file :
+                date = re.split(r'tpd|_',file)[1]
             if len(date) == 6 :
-                Parameters['FolderPath'] = self.folders['data']+'/'+'20'+date[0:2]+'/'+'20'+date[0:2]+'.'+date[2:4]+'.'+date[4:6]
-            elif len(date) == 8 :
-                Parameters['FolderPath'] = self.folders['data']+'/'+date[0:4]+'/'+date[0:4]+'.'+date[4:6]+'.'+date[6:8]
+                date = '20'+date
+            print(date[2:4]+'.'+date[4:6]+'.'+date[6:8])
+            parameters['FolderPath'] = folder+'/'+'20'+date[2:4]+'/'+'20'+date[2:4]+'.'+date[4:6]+'.'+date[6:8]
         
-        if 'FileName' not in Parameters :
-            Parameters['FileName'] = File
+        if 'fileName' not in parameters :
+            # print(file)
+            parameters['fileName'] = file
 
-        print('Folder: '+Parameters['FolderPath']+'/')
-        print('File:   '+Parameters['FileName'])
-
-        Data, Parameters = dt.loadData(Parameters)
+        try :
+            data, parameters = loadTPD(parameters)
+        except :
+            data, parameters = loadTPD_SU(parameters)
         
-        index = []
-        for i in Data.keys():
-            index.append(i)
-        if 'Assignments' in Parameters :
-            Assignments = df(Parameters['Assignments'],index=index,columns=['Assignments'])
-        else :
-            Assignments = df(index=index,columns=['Assignments'])
+        listy = []
+        for i in data.keys():
+            listy.append(i)
         
-        self.Assignments = Assignments
-        self.ParametersFile = File
-        self.Parameters = Parameters
-        self.Data = Data
+        return data, parameters
     
-    def SimulateData(self,Rate) :
+    def plotData(self,data) :
+
+        fig = go.Figure()
+        for Trace in data :
+            if Trace != 'Time (s)' and Trace != 'Time':
+                fig.add_trace(go.Scatter(x=data.index,y=data[Trace],name=Trace,mode='lines'))
+        fig.update_layout(xaxis_title='Temperature (K)',yaxis_title='Fit Value',legend_title='')
+        fig.show()
+
+
+class analysisTools :
+    
+    def __init__(self) :
+
+        pass
+
+    def simulateData(self, data, parameters, Rate) :
         
-        Data = self.Data
-        Parameters = self.Parameters
-        
-        if 'Simulations' in Parameters :
+        if 'Simulations' in parameters :
 
             # Initial parameters
             kB = 8.617e-5                 # eV/K
             T0 = 100                      # K
             
-            Temperature, deltaT = np.linspace(min(Data.index),max(Data.index),1001,retstep =True)
+            Temperature, deltaT = np.linspace(min (data.index),max (data.index),1001,retstep =True)
             Time = Temperature / Rate
             deltat = deltaT / Rate
             Size = len(Temperature)
@@ -391,11 +216,11 @@ class tpd :
             Coverages = df(index=Temperature)
             
             # Calculate traces
-            for Mass in Parameters['Simulations'] :
+            for Mass in parameters['Simulations'] :
                 Trace = np.zeros((Size))
                 Coverage = np.zeros((Size))
-                for idx, Peak in enumerate(Parameters['Simulations'][Mass]) :
-                    PeakParameters = Parameters['Simulations'][Mass][Peak]
+                for idx, Peak in enumerate(parameters['Simulations'][Mass]) :
+                    PeakParameters = parameters['Simulations'][Mass][Peak]
                     Offset = PeakParameters['Offset']
                     Scaling = PeakParameters['Scaling']
                     Ni = PeakParameters['Coverage']
@@ -422,134 +247,142 @@ class tpd :
                 Traces[Mass] = Trace
                 Coverages[Mass] = Coverage
                 
-        self.SimulatedData = Traces
-        self.SimulatedCoverages = Coverages
+        return Traces, Coverages
+
+
+class UI :
     
-    def UI(self) :
+    def __init__(self) :
+
+        dt = dataTools()
+        at = analysisTools()
+
+        self.cwd = Path(os.getcwd())
+
+        self.FoldersLabel = '-------Folders-------'
+        self.FilesLabel = '-------Files-------'
+        self.parametersFile = parametersFile
         
-        out = widgets.Output()
+        with open(parametersFile, 'r') as stream :
+            self.folders = yaml.safe_load(stream)['folders']
+        
+        out = ipw.Output()
 
-        ##### Widgets #####
-
-        self.ParametersFiles = widgets.Dropdown(
-            options=dt.fileList(['.yaml']),
-            description='Select File',
+        dataFolder = ipw.Text(value=self.folders['data'],
             layout=Layout(width='70%'),
-            style = {'description_width': '150px'},
-            disabled=False,
-        )
+            style = {'width': '100px','description_width': '150px'},
+            description='Data Folder')
+
+        def changeDataFolder(value) :
+            if value['new'] :
+                with open(self.parametersFile, 'r') as f :
+                    data = yaml.safe_load(f)
+                data['folders']['data'] = dataFolder.value
+                self.folders['data'] = dataFolder.value
+                with open(self.parametersFile, 'w') as f:
+                    yaml.dump(data, f)
+        dataFolder.observe(changeDataFolder, names='value')
+
+        def go_to_address(address):
+            address = Path(address)
+            if address.is_dir():
+                currentFolder_field.value = str(address)
+                SelectFolder.unobserve(selecting, names='value')
+                SelectFolder.options = self.get_folder_contents(folder=address)[0]
+                SelectFolder.observe(selecting, names='value')
+                SelectFolder.value = None
+                selectFile.options = self.get_folder_contents(folder=address)[1]
+
+        def newaddress(value):
+            go_to_address(currentFolder_field.value)
+        currentFolder_field = ipw.Text(value=str(self.cwd),
+            layout=Layout(width='70%'),
+            style = {'width': '100px','description_width': '150px'},
+            description='Current Folder')
+        currentFolder_field.on_submit(newaddress)
+                
+        def selecting(value) :
+            if value['new'] and value['new'] not in [self.FoldersLabel, self.FilesLabel] :
+                path = Path(currentFolder_field.value)
+                newpath = path / value['new']
+                if newpath.is_dir():
+                    go_to_address(newpath)
+                elif newpath.is_file():
+                    #some other condition
+                    pass
         
+        SelectFolder = ipw.Select(
+            options=self.get_folder_contents(self.cwd)[0],
+            rows=5,
+            value=None,
+            layout=Layout(width='70%'),
+            style = {'width': '100px','description_width': '150px'},
+            description='Subfolders')
+        SelectFolder.observe(selecting, names='value')
+        
+        selectFile = ipw.Select(
+            options=self.get_folder_contents(self.cwd)[1],
+            rows=10,
+            values=None,
+            layout=Layout(width='70%'),
+            style = {'width': '100px','description_width': '150px'},
+            description='Files')
+
+        def parent(value):
+            new = Path(currentFolder_field.value).parent
+            go_to_address(new)
+        up_button = ipw.Button(description='Up',layout=Layout(width='10%'))
+        up_button.on_click(parent)
+
         def ShowData_Clicked(b) :
             with out :
                 clear_output(True)
-                self.LoadData(self.ParametersFiles.value+'.yaml')
-                Data = self.Data
-                fig = go.Figure()
-                for Trace in Data :
-                    if Trace != 'Time' :
-                        fig.add_trace(go.Scatter(x=Data.index,y=Data[Trace],name=Trace,mode='lines'))
-                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
-                fig.show()
-                self.HeatingRate = widgets.FloatText(
-                    value=np.around(self.Parameters['HeatingRate'],3),
-                    description='Heating Rate (K/s):',
-                    layout=Layout(width='25%'),
-                    style = {'description_width': '140px'},
-                    disabled=False
-                )
-                display(widgets.Box([SimulateTrace,self.HeatingRate]))
-                display(widgets.HBox([Save2File]))
-        ShowData = widgets.Button(description="Show Data")
+                data, parameters = dt.loadData(selectFile.value,dataFolder.value)
+                self.data = data
+                self.parameters = parameters
+                dt.plotData(data)
+        ShowData = ipw.Button(description="Show data")
         ShowData.on_click(ShowData_Clicked)
 
         def SimulateTrace_Clicked(b) :
             with out :
                 clear_output(True)
-
-                self.LoadData(self.ParametersFiles.value+'.yaml')
-                Data = self.Data
-                self.SimulateData(self.HeatingRate.value)
-                SimulatedData = self.SimulatedData
-
-                fig = go.Figure()
-                for Trace in Data :
-                    if Trace != 'Time' :
-                        fig.add_trace(go.Scatter(x=Data.index,y=Data[Trace],name=Trace,mode='lines'))
-                for Trace in SimulatedData :
-                    fig.add_trace(go.Scatter(x=SimulatedData.index,y=SimulatedData[Trace],name=Trace,mode='lines'))
-                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['Description'],legend_title='')
+                data, parameters = dt.loadData(selectFile.value,dataFolder.value)
+                self.data = data
+                self.parameters = parameters
+                HeatingRate = ipw.FloatText(
+                    value=np.around(self.parameters['HeatingRate'],3),
+                    description='Heating Rate (K/s):',
+                    layout=Layout(width='25%'),
+                    style = {'description_width': '140px'},
+                    disabled=False
+                    )
+                simulatedData, SimulatedCoverages = at.simulateData(data, parameters, HeatingRate.value)
+                self.simulatedData = simulatedData
+                self.SimulatedCoverages = SimulatedCoverages
+                allData = pd.concat([data,simulatedData])
+                dt.plotData(allData)
+                fig = px.line(SimulatedCoverages)
+                fig.update_layout(yaxis_title='Coverage',showlegend=False,height=400)
                 fig.show()
-
-                fig = px.line(self.SimulatedCoverages)
-                fig.update_layout(yaxis_title='Coverage',showlegend=False,height=100)
-                fig.show()
-                display(widgets.Box([SimulateTrace,self.HeatingRate]))
-                display(Save2File)
-        SimulateTrace = widgets.Button(description="Simulate Traces")
+                display(ipw.Box([SimulateTrace,HeatingRate]))
+        SimulateTrace = ipw.Button(description="Simulate Traces")
         SimulateTrace.on_click(SimulateTrace_Clicked)
         
-        def Save2File_Clicked(b) :
-            os.makedirs(self.folders['fits'], exist_ok=True)
-            FitsFile = self.folders['fits'] + '/' + self.ParametersFiles.value + '.hdf'
-            print(FitsFile)
-            self.Data.to_hdf(FitsFile,'Data',mode='w')
-            self.Assignments.to_hdf(FitsFile,'Assignments',mode='a')
-        Save2File = widgets.Button(description="Save to File")
-        Save2File.on_click(Save2File_Clicked)
-        
-        display(self.ParametersFiles)
-        display(ShowData)
+        display(ipw.HBox([dataFolder]))
+        display(ipw.HBox([currentFolder_field]))
+        display(ipw.HBox([SelectFolder,up_button]))
+        display(ipw.HBox([selectFile]))
+        display(ipw.HBox([ShowData,SimulateTrace]))
 
-        self.ParametersFile = self.ParametersFiles.value
+        self.parametersFile = selectFile.value
 
         display(out)
-    
 
-class tpdViewer :
-    
-    def __init__(self) :
-        
-        pass
-    
-    def LoadData(self, file, folder) :
+    def get_folder_contents(self,folder):
 
-        Parameters = {}
-        Parameters['FileName'] = file
-        Parameters['FolderPath'] = folder
-        Data, Parameters = dt.loadData(Parameters)
-
-        self.Parameters = Parameters
-        self.Data = Data
-    
-    def UI(self) :
-        
-        out = widgets.Output()
-
-        fc = FileChooser()
-        
-        def ShowData_Clicked(b) :
-            with out :
-                clear_output(True)
-                self.LoadData(fc.selected_filename,fc.selected_path)
-                fig = go.Figure()
-                for Trace in self.Data :
-                    if Trace != 'Time' :
-                        fig.add_trace(go.Scatter(x=self.Data.index,y=self.Data[Trace],name=Trace,mode='lines'))
-                fig.update_layout(xaxis_title='Temperature',yaxis_title='Fit Value',title=self.Parameters['FileName'],legend_title='',height=800,font=dict(size=18))
-                fig.show()
-                display(saveData)
-        ShowData = widgets.Button(description="View TPD")
-        ShowData.on_click(ShowData_Clicked)
-
-        def saveData_Clicked(b) :
-            with out :
-                filename = os.path.splitext(fc.selected_filename)[0]
-                with pd.ExcelWriter(filename+'.xlsx') as writer :
-                    self.Data.to_excel(writer, sheet_name=filename)
-        saveData = ipw.Button(description="Save to Excel")
-        saveData.on_click(saveData_Clicked)
-        
-        display(fc)
-        display(ShowData)
-
-        display(out)
+        'Gets contents of folder, sorting by folder then files, hiding hidden things'
+        folder = Path(folder)
+        folders = [item.name for item in folder.iterdir() if item.is_dir() and not item.name.startswith('.')]
+        files = [item.name for item in folder.iterdir() if item.is_file() and not item.name.startswith('.')]
+        return sorted(folders), sorted(files)
