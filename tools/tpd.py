@@ -40,15 +40,15 @@ class dataTools :
 
         pass
 
-    def loadData(self, file, folder) :
+    def loadData(self, parFile, dataFolder) :
 
         def loadTPD_SU(parameters) :
             
-            FolderPath = parameters['FolderPath']
+            folderPath = parameters['folderPath']
             fileName = parameters['FileName']
             Masses = parameters['Masses']
 
-            with open(FolderPath + '/' + fileName, mode='rb') as file:
+            with open(folderPath + '/' + fileName, mode='rb') as file:
                 fileContent = file.read()
 
             NumChan = len(Masses) + 1
@@ -90,11 +90,11 @@ class dataTools :
 
         def loadTPD(parameters) :
             
-            FolderPath = parameters['FolderPath']
+            folderPath = parameters['folderPath']
             fileName = parameters['FileName']
             
             if 'yml' in fileName:
-                with open(FolderPath + '/' + fileName, mode='rb') as file:
+                with open(folderPath + '/' + fileName, mode='rb') as file:
                     fileContent = file.read()
                 allData = yaml.safe_load(fileContent)
                 
@@ -107,7 +107,7 @@ class dataTools :
                         data[key] = allData[key]
                         
             else:
-                with open(FolderPath + '/' + fileName, mode='rb') as file:
+                with open(folderPath + '/' + fileName, mode='rb') as file:
                     fileContent = pd.read_csv(file)
 
                 data = fileContent
@@ -154,24 +154,25 @@ class dataTools :
                 
             return data, parameters
 
-        with open(file, 'r') as stream :
+        with open(parFile, 'r') as stream :
             parameters = yaml.safe_load(stream)
-        
-        if 'FolderPath' not in parameters :
-            print(file)
-            if 'TPD' in file or 'tpd' in file:
-                date = re.split(r'TPD|_',file)[1]
-            if 'tpd' in file :
-                date = re.split(r'tpd|_',file)[1]
-            if len(date) == 6 :
-                date = '20'+date
-            print(date[2:4]+'.'+date[4:6]+'.'+date[6:8])
-            parameters['FolderPath'] = folder+'/'+'20'+date[2:4]+'/'+'20'+date[2:4]+'.'+date[4:6]+'.'+date[6:8]
-        
-        if 'fileName' not in parameters :
-            # print(file)
-            parameters['fileName'] = file
 
+        if 'FileName' not in parameters :
+            parameters['FileName'] = parFile
+        
+        if 'folderPath' not in parameters :
+            if os.path.exists(dataFolder+'/'+parameters['FileName']) :
+                parameters['folderPath'] = dataFolder
+            else :
+                if 'TPD' in parameters['FileName'] :
+                    date = re.split(r'TPD|_',parameters['FileName'])[1]
+                if 'tpd' in parameters['FileName'] :
+                    date = re.split(r'tpd|_',parameters['FileName'])[1]
+                if len(date) == 6 :
+                    date = '20'+date
+                parameters['folderPath'] = dataFolder+'/'+'20'+date[2:4]+'/'+'20'+date[2:4]+'.'+date[4:6]+'.'+date[6:8]
+
+        print('File: '+parameters['folderPath'])
         try :
             data, parameters = loadTPD(parameters)
         except :
@@ -337,7 +338,7 @@ class UI :
         def ShowData_Clicked(b) :
             with out :
                 clear_output(True)
-                data, parameters = dt.loadData(selectFile.value,dataFolder.value)
+                data, parameters = dt.loadData(currentFolder_field.value+'/'+selectFile.value,dataFolder.value)
                 self.data = data
                 self.parameters = parameters
                 dt.plotData(data)
