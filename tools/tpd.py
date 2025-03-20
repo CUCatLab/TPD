@@ -32,7 +32,7 @@ pio.templates[pio.templates.default].layout.update(dict(
     legend_bgcolor='rgba(0,0,0,0)'
 ))
 
-parametersFile = 'tools/parameters.yaml'
+settingsFile = 'tools/settings.yaml'
 
 class dataTools :
     
@@ -40,9 +40,9 @@ class dataTools :
 
         pass
 
-    def loadData(self, parFile, dataFolder) :
+    def loadData(self, tpdFile, dataFolder) :
 
-        def loadTPD_SU(parameters) :
+        def loadTpd_SU(parameters) :
             
             folderPath = parameters['folderPath']
             fileName = parameters['FileName']
@@ -88,29 +88,24 @@ class dataTools :
                 
             return data, parameters
 
-        def loadTPD(parameters) :
+        def loadTpd(parameters) :
             
             folderPath = parameters['folderPath']
             fileName = parameters['FileName']
             
-            if 'yml' in fileName:
+            if fileName.endswith('.yml') or fileName.endswith('.yaml'):
                 with open(folderPath + '/' + fileName, mode='rb') as file:
                     fileContent = file.read()
                 allData = yaml.safe_load(fileContent)
-                
                 data = dict()
-                
                 for key in allData:
                     try:
                         data[float(key)] = allData[key]
                     except ValueError:
                         data[key] = allData[key]
-                        
             else:
                 with open(folderPath + '/' + fileName, mode='rb') as file:
-                    fileContent = pd.read_csv(file)
-
-                data = fileContent
+                    data = pd.read_csv(file)
             
             if 'Parameters' in data:
                 del data['Parameters']
@@ -139,7 +134,7 @@ class dataTools :
             if 'Mass 44.0' in data:
                 data['CO2'] = data['Mass 44.0']
                 del data['Mass 44.0']
-            
+                
             if type (data) == dict:
                 data = df.from_dict (data)
             if 'Temperature (K)' in data:
@@ -151,36 +146,36 @@ class dataTools :
                 parameters['HeatingRate'] = np.mean(np.diff (data.index)/np.diff (data['Time (s)']))
             else:
                 parameters['HeatingRate'] = np.mean(np.diff (data.index)/np.diff (data['Time']))
-                
+            
             return data, parameters
-
-        with open(parFile, 'r') as stream :
-            parameters = yaml.safe_load(stream)
-
-        if 'FileName' not in parameters :
-            parameters['FileName'] = parFile
         
-        if 'folderPath' not in parameters :
-            if os.path.exists(dataFolder+'/'+parameters['FileName']) :
-                parameters['folderPath'] = dataFolder
-            else :
-                if 'TPD' in parameters['FileName'] :
-                    date = re.split(r'TPD|_',parameters['FileName'])[1]
-                if 'tpd' in parameters['FileName'] :
-                    date = re.split(r'tpd|_',parameters['FileName'])[1]
-                if len(date) == 6 :
-                    date = '20'+date
-                parameters['folderPath'] = dataFolder+'/'+'20'+date[2:4]+'/'+'20'+date[2:4]+'.'+date[4:6]+'.'+date[6:8]
+        if tpdFile[1].endswith('.yaml') or tpdFile[1].endswith('.yml') :
+            with open(tpdFile[0]+'/'+tpdFile[1], 'r') as stream :
+                parameters = yaml.safe_load(stream)
+            if 'FileName' not in parameters :
+                parameters['FileName'] = tpdFile
+            
+            if 'folderPath' not in parameters :
+                if os.path.exists(dataFolder+'/'+parameters['FileName']) :
+                    parameters['folderPath'] = dataFolder
+                else :
+                    if 'TPD' in parameters['FileName'] :
+                        date = re.split(r'TPD|_',parameters['FileName'])[1]
+                    if 'tpd' in parameters['FileName'] :
+                        date = re.split(r'tpd|_',parameters['FileName'])[1]
+                    if len(date) == 6 :
+                        date = '20'+date
+                    parameters['folderPath'] = dataFolder+'/'+'20'+date[2:4]+'/'+'20'+date[2:4]+'.'+date[4:6]+'.'+date[6:8]
+        elif tpdFile[1].endswith('.csv') :
+            parameters = {}
+            parameters['folderPath'] = tpdFile[0]
+            parameters['FileName'] = tpdFile[1]
 
-        print('File: '+parameters['folderPath'])
+        print('File: '+parameters['folderPath']+'/'+parameters['FileName'])
         try :
-            data, parameters = loadTPD(parameters)
+            data, parameters = loadTpd(parameters)
         except :
-            data, parameters = loadTPD_SU(parameters)
-        
-        listy = []
-        for i in data.keys():
-            listy.append(i)
+            data, parameters = loadTpd_SU(parameters)
         
         return data, parameters
     
@@ -262,52 +257,57 @@ class UI :
 
         self.FoldersLabel = '-------Folders-------'
         self.FilesLabel = '-------Files-------'
-        self.parametersFile = parametersFile
         
-        with open(parametersFile, 'r') as stream :
-            self.folders = yaml.safe_load(stream)['folders']
+        with open(settingsFile, 'r') as stream :
+            settings = yaml.safe_load(stream)
         
         out = ipw.Output()
 
-        dataFolder = ipw.Text(value=self.folders['data'],
+        def gotoDataFolder(address):
+            address = Path(address)
+            if address.is_dir():
+                dataFolder.value = str(address)
+                settings['folders']['data'] = str(address)
+                with open(settingsFile, 'w') as f:
+                    yaml.dump(settings, f)
+            else :
+                dataFolder.value = settings['folders']['data']
+                    
+        def newDataFolder(value):
+            gotoDataFolder(dataFolder.value)
+        dataFolder = ipw.Text(value=settings['folders']['data'],
             layout=Layout(width='70%'),
             style = {'width': '100px','description_width': '150px'},
             description='Data Folder')
+        dataFolder.on_submit(newDataFolder)
 
-        def changeDataFolder(value) :
-            if value['new'] :
-                with open(self.parametersFile, 'r') as f :
-                    data = yaml.safe_load(f)
-                data['folders']['data'] = dataFolder.value
-                self.folders['data'] = dataFolder.value
-                with open(self.parametersFile, 'w') as f:
-                    yaml.dump(data, f)
-        dataFolder.observe(changeDataFolder, names='value')
-
-        def go_to_address(address):
+        def gotoCurFolder(address):
             address = Path(address)
             if address.is_dir():
-                currentFolder_field.value = str(address)
+                currentFolder.value = str(address)
                 SelectFolder.unobserve(selecting, names='value')
                 SelectFolder.options = self.get_folder_contents(folder=address)[0]
                 SelectFolder.observe(selecting, names='value')
                 SelectFolder.value = None
                 selectFile.options = self.get_folder_contents(folder=address)[1]
+                settings['folders']['current'] = str(address)
+                with open(settingsFile, 'w') as f:
+                    yaml.dump(settings, f)
 
-        def newaddress(value):
-            go_to_address(currentFolder_field.value)
-        currentFolder_field = ipw.Text(value=str(self.cwd),
+        def newCurFolder(value):
+            gotoCurFolder(currentFolder.value)
+        currentFolder = ipw.Text(value=str(self.cwd),
             layout=Layout(width='70%'),
             style = {'width': '100px','description_width': '150px'},
             description='Current Folder')
-        currentFolder_field.on_submit(newaddress)
+        currentFolder.on_submit(newCurFolder)
                 
         def selecting(value) :
             if value['new'] and value['new'] not in [self.FoldersLabel, self.FilesLabel] :
-                path = Path(currentFolder_field.value)
+                path = Path(currentFolder.value)
                 newpath = path / value['new']
                 if newpath.is_dir():
-                    go_to_address(newpath)
+                    gotoCurFolder(newpath)
                 elif newpath.is_file():
                     #some other condition
                     pass
@@ -330,15 +330,15 @@ class UI :
             description='Files')
 
         def parent(value):
-            new = Path(currentFolder_field.value).parent
-            go_to_address(new)
+            new = Path(currentFolder.value).parent
+            gotoCurFolder(new)
         up_button = ipw.Button(description='Up',layout=Layout(width='10%'))
         up_button.on_click(parent)
 
         def ShowData_Clicked(b) :
             with out :
                 clear_output(True)
-                data, parameters = dt.loadData(currentFolder_field.value+'/'+selectFile.value,dataFolder.value)
+                data, parameters = dt.loadData([currentFolder.value,selectFile.value],dataFolder.value)
                 self.data = data
                 self.parameters = parameters
                 dt.plotData(data)
@@ -348,7 +348,7 @@ class UI :
         def SimulateTrace_Clicked(b) :
             with out :
                 clear_output(True)
-                data, parameters = dt.loadData(selectFile.value,dataFolder.value)
+                data, parameters = dt.loadData([currentFolder.value,selectFile.value],dataFolder.value)
                 self.data = data
                 self.parameters = parameters
                 HeatingRate = ipw.FloatText(
@@ -371,12 +371,10 @@ class UI :
         SimulateTrace.on_click(SimulateTrace_Clicked)
         
         display(ipw.HBox([dataFolder]))
-        display(ipw.HBox([currentFolder_field]))
+        display(ipw.HBox([currentFolder]))
         display(ipw.HBox([SelectFolder,up_button]))
         display(ipw.HBox([selectFile]))
         display(ipw.HBox([ShowData,SimulateTrace]))
-
-        self.parametersFile = selectFile.value
 
         display(out)
 
